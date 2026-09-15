@@ -1,0 +1,293 @@
+name: Build Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: 'Target Device Code (设备代号)'
+        required: true
+        default: 'umi'
+        type: choice
+        options:
+          - alioth
+          - apollo
+          - cas
+          - cmi
+          - dagu
+          - elish
+          - enuma
+          - lmi
+          - munch
+          - pipa
+          - psyche
+          - thyme
+          - umi
+      ksu:
+        description: 'Enable KernelSU (ReSukiSU)'
+        required: true
+        type: boolean
+        default: true
+      target_os:
+        description: 'Target OS (目标系统)'
+        required: true
+        type: choice
+        default: 'aosp'
+        options:
+          - aosp
+          - miui
+          - both
+
+jobs:
+  build-kernel:
+    name: Build ${{ github.event.inputs.device }} | KSU:${{ github.event.inputs.ksu }} | OS:${{ github.event.inputs.target_os }}
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 1
+
+    - name: Set up Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc bison build-essential ccache curl flex gawk \
+          git gnupg gperf imagemagick libncurses-dev \
+          lib32readline-dev lib32z1-dev liblz4-tool \
+          libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync \
+          schedtool squashfs-tools xsltproc zip zlib1g-dev python3 patch
+
+    - name: Cache ccache
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ccache_mikernel
+        key: ${{ runner.os }}-kernel-ccache-${{ github.event.inputs.device }}-${{ github.run_id }}
+        restore-keys: |
+          ${{ runner.os }}-kernel-ccache-${{ github.event.inputs.device }}-
+          ${{ runner.os }}-kernel-ccache-
+
+    - name: Setup zyc-clang 16 Toolchain
+      run: |
+        mkdir -p $HOME/zyc-clang
+        cd $HOME/zyc-clang
+        wget -q https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260807-release/Clang-16.0.6-20260807.tar.gz
+        tar -zxvf Clang-16.0.6-20260807.tar.gz
+
+    # ============================================================
+    # STEP: Apply Droidspaces patches for non-GKI (4.19) kernels
+    # ============================================================
+    - name: Apply Droidspaces Kernel Patches
+      run: |
+        set -e
+        echo "==> Downloading Droidspaces non-GKI patches..."
+        mkdir -p /tmp/droidspaces-patches
+        cd /tmp/droidspaces-patches
+
+        curl -fsSL -o 01.fix_kernel_panic_in_xt_qtaguid.patch \
+          "https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/main/Documentation/resources/kernel-patches/non-GKI/01.fix_kernel_panic_in_xt_qtaguid.patch"
+
+        curl -fsSL -o 02.fix_restore_cgroup_file_prefix_handling.patch \
+          "https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/main/Documentation/resources/kernel-patches/non-GKI/02.fix%20restore%20cgroup%20file%20prefix%20handling%20.patch"
+
+        echo "==> Downloaded patches:"
+        ls -la /tmp/droidspaces-patches
+
+        # ALWAYS apply patches from the kernel source root
+        cd "$GITHUB_WORKSPACE"
+        echo "==> Working directory: $(pwd)"
+
+        apply_patch() {
+          local patch_file="$1"
+          local label="$2"
+
+          echo "==> Applying ${label} ..."
+
+          if git apply --check "$patch_file" 2>/dev/null; then
+            git apply "$patch_file"
+            echo "    -> applied with git apply"
+            return 0
+          fi
+
+          echo "    -> git apply --check failed, trying patch -p1 --forward ..."
+          if patch -p1 --forward --batch < "$patch_file"; then
+            echo "    -> applied with patch -p1"
+            return 0
+          fi
+
+          echo "    !! ERROR: could not apply ${label}"
+          return 1
+        }
+
+        # Patch 01 targets net/netfilter/xt_qtaguid.c.
+        # If that file doesn't exist in this tree, the patch cannot apply.
+        # We treat this as a soft skip rather than a hard failure.
+        if [ -f net/netfilter/xt_qtaguid.c ]; then
+          apply_patch /tmp/droidspaces-patches/01.fix_kernel_panic_in_xt_qtaguid.patch "patch 01 (xt_qtaguid)"
+        else
+          echo "==> Skipping patch 01: net/netfilter/xt_qtaguid.c not present in this kernel tree."
+        fi
+
+        # Patch 02 targets cgroup file prefix handling (kernel/cgroup/cgroup-v1.c).
+        # Also a soft skip if the target file is missing.
+        if [ -f kernel/cgroup/cgroup-v1.c ]; then
+          apply_patch /tmp/droidspaces-patches/02.fix_restore_cgroup_file_prefix_handling.patch "patch 02 (cgroup v1)"
+        else
+          echo "==> Skipping patch 02: kernel/cgroup/cgroup-v1.c not present in this kernel tree."
+        fi
+
+        echo "==> Droidspaces patch step complete."
+
+    # ============================================================
+    # STEP: Merge Droidspaces config into the device defconfig
+    # ============================================================
+    - name: Merge Droidspaces Config into Defconfig
+      run: |
+        set -e
+        DEVICE="${{ github.event.inputs.device }}"
+        echo "==> Locating defconfig for device: $DEVICE"
+
+        # Try the two known locations.
+        CANDIDATES=(
+          "arch/arm64/configs/${DEVICE}_defconfig"
+          "vendor/${DEVICE}_defconfig"
+        )
+
+        DEFCONFIG=""
+        for c in "${CANDIDATES[@]}"; do
+          if [ -f "$c" ]; then
+            DEFCONFIG="$c"
+            break
+          fi
+        done
+
+        if [ -z "$DEFCONFIG" ]; then
+          echo "!! ERROR: could not find defconfig for device $DEVICE."
+          echo "   Looked in: ${CANDIDATES[*]}"
+          echo "   Contents of arch/arm64/configs/:"
+          ls -la arch/arm64/configs/ || true
+          echo "   Contents of vendor/ (if any):"
+          ls -la vendor/ 2>/dev/null || true
+          exit 1
+        fi
+
+        echo "==> Using defconfig: $DEFCONFIG"
+
+        # Backup original for reference
+        cp "$DEFCONFIG" "${DEFCONFIG}.orig"
+
+        # Helper: run the kernel's scripts/config against the defconfig.
+        # This writes the correct syntax (# CONFIG_X is not set for =n,
+        # CONFIG_X=y for =y, etc.) which `make defconfig` understands.
+        sc() {
+          ./scripts/config --file "$DEFCONFIG" "$@"
+        }
+
+        if [ ! -x scripts/config ]; then
+          echo "!! ERROR: scripts/config not found. Is this a kernel source tree?"
+          exit 1
+        fi
+
+        echo "==> Enabling mandatory Droidspaces options ..."
+
+        # ---- IPC mechanisms ----
+        sc --enable SYSCTL
+        sc --enable SYSVIPC
+        sc --enable POSIX_MQUEUE
+
+        # ---- Core namespace support ----
+        sc --enable NAMESPACES
+        sc --enable PID_NS
+        sc --enable UTS_NS
+        sc --enable IPC_NS
+
+        # ---- Seccomp ----
+        sc --enable SECCOMP
+        sc --enable SECCOMP_FILTER
+
+        # ---- Control groups ----
+        sc --enable CGROUPS
+        sc --enable CGROUP_DEVICE
+        sc --enable CGROUP_PIDS
+        sc --enable MEMCG
+        sc --enable CGROUP_SCHED
+        sc --enable FAIR_GROUP_SCHED
+        sc --enable CGROUP_FREEZER
+        sc --enable CGROUP_NET_PRIO
+
+        # ---- Device filesystem ----
+        sc --enable DEVTMPFS
+
+        # ---- OverlayFS ----
+        sc --enable OVERLAY_FS
+
+        # ---- tmpfs xattr / acl ----
+        sc --enable TMPFS_POSIX_ACL
+        sc --enable TMPFS_XATTR
+
+        # ---- Firmware loader ----
+        sc --enable FW_LOADER
+        sc --enable FW_LOADER_USER_HELPER
+        sc --enable FW_LOADER_COMPRESS
+
+        # ---- Network isolation (NAT/none) ----
+        sc --enable NET_NS
+        sc --enable VETH
+        sc --enable BRIDGE
+        sc --enable NETFILTER
+        sc --enable BRIDGE_NETFILTER
+        sc --enable NETFILTER_ADVANCED
+        sc --enable NF_CONNTRACK
+        sc --enable IP_NF_IPTABLES
+        sc --enable IP_NF_FILTER
+        sc --enable NF_NAT
+        sc --enable NF_TABLES
+        sc --enable IP_NF_TARGET_MASQUERADE
+        sc --enable NETFILTER_XT_TARGET_MASQUERADE
+        sc --enable NETFILTER_XT_TARGET_TCPMSS
+        sc --enable NETFILTER_XT_MATCH_ADDRTYPE
+        sc --enable NF_CONNTRACK_NETLINK
+        sc --enable NF_NAT_REDIRECT
+        sc --enable IP_ADVANCED_ROUTER
+        sc --enable IP_MULTIPLE_TABLES
+
+        # ---- legacy 4.19-only symbols (may not exist on some trees) ----
+        sc --enable NF_CONNTRACK_IPV4      || true
+        sc --enable NF_NAT_IPV4            || true
+        sc --enable IP_NF_NAT              || true
+
+        # ---- Required DISABLE for internet to work on older kernels ----
+        sc --disable ANDROID_PARANOID_NETWORK
+
+        # ---- User namespaces (fixes Docker unsafe procfs) ----
+        sc --enable USER_NS
+
+        echo "==> Defconfig updated. Diff vs original:"
+        diff -u "${DEFCONFIG}.orig" "$DEFCONFIG" || true
+
+        echo "==> Final 60 lines of defconfig:"
+        tail -n 60 "$DEFCONFIG"
+
+    - name: Run Build Script
+      run: |
+        set -e
+        chmod +x build_kernel.sh
+
+        ARGS="${{ github.event.inputs.device }}"
+
+        if [ "${{ github.event.inputs.ksu }}" == "true" ]; then
+          ARGS="$ARGS ksu"
+        fi
+
+        if [ "${{ github.event.inputs.target_os }}" != "both" ]; then
+          ARGS="$ARGS ${{ github.event.inputs.target_os }}"
+        fi
+
+        echo "Executing command: ./build_kernel.sh $ARGS"
+        ./build_kernel.sh $ARGS
+
+    - name: Upload Flashable ZIP
+      uses: actions/upload-artifact@v7
+      with:
+        name: APTKernel-${{ github.event.inputs.device }}-${{ github.event.inputs.target_os }}-${{ github.run_id }}
+        path: APTKernel_*.zip
+        compression-level: 0
