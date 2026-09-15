@@ -26,7 +26,7 @@ on:
         description: 'Enable KernelSU (ReSukiSU)'
         required: true
         type: boolean
-        default: false
+        default: true
       target_os:
         description: 'Target OS (目标系统)'
         required: true
