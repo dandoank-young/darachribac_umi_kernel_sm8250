@@ -79,22 +79,22 @@ jobs:
     - name: Apply Droidspaces Kernel Patches
       run: |
         set -e
-        echo "==> Downloading Droidspaces non-GKI patches..."
-        mkdir -p /tmp/droidspaces-patches
-        cd /tmp/droidspaces-patches
+        echo "==> Cloning Droidspaces-OSS to obtain non-GKI patches ..."
 
-        curl -fsSL -o 01.fix_kernel_panic_in_xt_qtaguid.patch \
-          "https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/main/Documentation/resources/kernel-patches/non-GKI/01.fix_kernel_panic_in_xt_qtaguid.patch"
+        # Clone shallowly to a temp directory. This avoids brittle raw URLs
+        # and correctly preserves filenames containing spaces.
+        rm -rf /tmp/Droidspaces-OSS
+        git clone --depth 1 https://github.com/ravindu644/Droidspaces-OSS.git /tmp/Droidspaces-OSS
 
-        curl -fsSL -o 02.fix_restore_cgroup_file_prefix_handling.patch \
-          "https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/main/Documentation/resources/kernel-patches/non-GKI/02.fix%20restore%20cgroup%20file%20prefix%20handling%20.patch"
+        PATCH_DIR="/tmp/Droidspaces-OSS/Documentation/resources/kernel-patches/non-GKI"
 
-        echo "==> Downloaded patches:"
-        ls -la /tmp/droidspaces-patches
+        echo "==> Available non-GKI patches:"
+        ls -la "$PATCH_DIR"
 
-        # ALWAYS apply patches from the kernel source root
+        # Work from the kernel source root so the relative paths inside
+        # the patches (net/netfilter/..., kernel/cgroup/...) resolve.
         cd "$GITHUB_WORKSPACE"
-        echo "==> Working directory: $(pwd)"
+        echo "==> Kernel source root: $(pwd)"
 
         apply_patch() {
           local patch_file="$1"
@@ -102,6 +102,7 @@ jobs:
 
           echo "==> Applying ${label} ..."
 
+          # Try git apply first (understands a/ b/ git-style prefixes)
           if git apply --check "$patch_file" 2>/dev/null; then
             git apply "$patch_file"
             echo "    -> applied with git apply"
@@ -118,22 +119,30 @@ jobs:
           return 1
         }
 
-        # Patch 01 targets net/netfilter/xt_qtaguid.c.
-        # If that file doesn't exist in this tree, the patch cannot apply.
-        # We treat this as a soft skip rather than a hard failure.
-        if [ -f net/netfilter/xt_qtaguid.c ]; then
-          apply_patch /tmp/droidspaces-patches/01.fix_kernel_panic_in_xt_qtaguid.patch "patch 01 (xt_qtaguid)"
-        else
-          echo "==> Skipping patch 01: net/netfilter/xt_qtaguid.c not present in this kernel tree."
-        fi
+        # Iterate over every .patch file in the non-GKI directory.
+        # Patches whose target file is absent from this kernel tree are
+        # reported and skipped rather than failing the whole job.
+        shopt -s nullglob
+        for patch_file in "$PATCH_DIR"/*.patch; do
+          patch_name="$(basename "$patch_file")"
 
-        # Patch 02 targets cgroup file prefix handling (kernel/cgroup/cgroup-v1.c).
-        # Also a soft skip if the target file is missing.
-        if [ -f kernel/cgroup/cgroup-v1.c ]; then
-          apply_patch /tmp/droidspaces-patches/02.fix_restore_cgroup_file_prefix_handling.patch "patch 02 (cgroup v1)"
-        else
-          echo "==> Skipping patch 02: kernel/cgroup/cgroup-v1.c not present in this kernel tree."
-        fi
+          # Determine the first target path from the patch header so we can
+          # check whether the file exists in this tree.
+          target="$(grep -m1 '^diff --git ' "$patch_file" | sed -E 's#^diff --git a/([^ ]+) b/.*#\1#')"
+
+          if [ -z "$target" ]; then
+            echo "==> Skipping ${patch_name}: could not determine target path from patch header."
+            continue
+          fi
+
+          if [ ! -f "$target" ]; then
+            echo "==> Skipping ${patch_name}: target '${target}' not present in this kernel tree."
+            continue
+          fi
+
+          apply_patch "$patch_file" "$patch_name"
+        done
+        shopt -u nullglob
 
         echo "==> Droidspaces patch step complete."
 
