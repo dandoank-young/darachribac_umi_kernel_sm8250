@@ -303,7 +303,15 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         fi
 
-        echo "==> Loading device defconfig: make ${DEVICE}_defconfig"
+        # Run savedefconfig in a temp copy of the kernel tree so the
+        # source root stays clean for build_kernel.sh (it refuses to
+        # compile from out_aosp when the source tree has artifacts).
+        TMP_TREE="/tmp/minimize-defconfig-$DEVICE"
+        rm -rf "$TMP_TREE"
+        cp -a . "$TMP_TREE"
+        pushd "$TMP_TREE" > /dev/null
+
+        echo "==> Loading device defconfig in temp tree: make ${DEVICE}_defconfig"
         make "${DEVICE}_defconfig"
 
         echo "==> Minimizing with savedefconfig"
@@ -311,10 +319,15 @@ jobs:
 
         if [ ! -f defconfig ]; then
           echo "!! ERROR: savedefconfig did not produce ./defconfig"
+          popd > /dev/null
           exit 1
         fi
 
-        mv defconfig "$DEFCONFIG"
+        popd > /dev/null
+
+        # Only copy the resulting defconfig back — no artifacts leak.
+        cp "$TMP_TREE/defconfig" "$DEFCONFIG"
+        rm -rf "$TMP_TREE"
 
         echo "==> Minimized defconfig (${DEVICE}) — line count:"
         wc -l "$DEFCONFIG"
