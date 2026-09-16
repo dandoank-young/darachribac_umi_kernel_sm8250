@@ -100,6 +100,28 @@ config BFQ_GROUP_IOSCHED
        Enable hierarchical scheduling in BFQ, using the blkio
        (cgroups-v1) or io (cgroups-v2) controller.
 
+config IOSCHED_ANXIETY
+	tristate "Anxiety adaptive I/O scheduler"
+	default n
+	help
+	  Anxiety is an adaptive I/O scheduler that dynamically adjusts
+	  the queue depth based on I/O activity patterns. During idle
+	  periods, it reduces queue depth to minimize latency; during
+	  bursts, it increases queue depth to maximize throughput.
+
+	  This is particularly beneficial for UFS storage on mobile
+	  devices where mixed read/write workloads are common.
+
+	  If unsure, say N.
+
+config DEFAULT_ANXIETY
+	bool "Use Anxiety as the default I/O scheduler"
+	depends on IOSCHED_ANXIETY=y
+	default n
+	help
+	  Set Anxiety as the default I/O scheduler instead of CFQ.
+	  Only select this if you also enabled IOSCHED_ANXIETY above.
+
 endmenu
 
 endif

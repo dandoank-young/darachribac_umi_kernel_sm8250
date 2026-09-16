@@ -301,4 +301,18 @@ config GENERIC_ARCH_TOPOLOGY
 	  appropriate scaling, sysfs interface for changing capacity values at
 	  runtime.
 
+config BOEFFLA_WAKELOCK_BLOCKER
+	bool "Boeffla wakelock blocker"
+	default n
+	help
+	  Enable the Boeffla-style wakelock blocker. This driver creates
+	  a sysfs interface at /sys/kernel/boeffla_wakelock_blocker/ that
+	  allows blocking spurious kernel wakelocks which cause unnecessary
+	  wakeups and drain battery during idle.
+
+	  The blocker monitors wakelock events and can suppress those
+	  deemed spurious (short-lived, from known noisy drivers).
+
+	  If unsure, say N.
+
 endmenu
