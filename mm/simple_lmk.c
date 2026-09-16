@@ -2,103 +2,111 @@
 /*
  * Simple Low Memory Killer
  *
- * A simplified LMK that monitors free memory and kills processes
- * when thresholds are crossed. More responsive than the standard
- * OOM killer for low-memory situations on Android devices.
+ * A lightweight in-kernel low memory killer that monitors free memory
+ * and kills processes when thresholds are crossed. More responsive
+ * than the standard OOM killer for Android workloads.
  */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
-#include <linux/oom.h>
 #include <linux/workqueue.h>
-#include <linux/freezer.h>
-#include <linux/jiffies.h>
-#include <asm/div64.h>
+#include <linux/swap.h>
+#include <linux/oom.h>
+#include <linux/rcupdate.h>
 
 #define SIMPLE_LMK_NAME "simple_lmk"
-#define SIMPLE_LMK_DELAY msecs_to_jiffies(2000)
-#define SIMPLE_LMK_MIN_FREE_PAGES 4096  /* 16MB at 4K pages */
+#define SIMPLE_LMK_DELAY_MS 2000
+#define SIMPLE_LMK_MINFREE_PERCENT 3
 
-static int lmk_minfree[8] = {
-	2048, 3072, 4096, 5120,
-	8192, 10240, 12288, 16384
-};
-static int lmk_maxundo[8] = {
-	-1, -1, -1, -1,
-	-1, -1, -1, -1
-};
-static int lmk_deadline = 5;
+static int minfree_percent = SIMPLE_LMK_MINFREE_PERCENT;
+module_param(minfree_percent, int, 0644);
+MODULE_PARM_DESC(minfree_percent, "Free memory threshold percentage (default=3)");
 
 static struct workqueue_struct *lmk_wq;
-static struct work_struct lmk_work;
+static struct delayed_work lmk_work;
 
-static inline unsigned long get_free_memory_kb(void)
+static unsigned long get_free_memory_kb(void)
 {
-	return zone_page_state(&contig_page_dataZoneId, NR_FREE_PAGES) *
-		(PAGE_SIZE / 1024);
+	return nr_free_pages() * (PAGE_SIZE / 1024);
 }
 
-static int simple_lmk_kill_process(void)
+static unsigned long get_total_memory_kb(void)
+{
+	return totalram_pages * (PAGE_SIZE / 1024);
+}
+
+static int simple_lmk_kill_one(void)
 {
 	struct task_struct *p, *selected = NULL;
-	long totalpoints = 0;
-	int oom_score;
+	long max_oom_score = -4000;
+	unsigned long max_rss = 0;
+	int killed = 0;
 
-	/* Find the task with highest oom_score (least important) */
 	rcu_read_lock();
 	for_each_process(p) {
+		long oom_score;
+		unsigned long rss = 0;
+
 		if (p->flags & PF_KTHREAD)
 			continue;
-		if (task_is_stopped_or_traced(p))
+		if (p->pid == 1)
 			continue;
-		oom_score = p->signal->oom_score;
-		totalpoints += oom_score;
-		if (!selected || oom_score > selected->signal->oom_score)
+		if (p == current)
+			continue;
+
+		oom_score = p->signal->oom_score_adj;
+		if (p->mm)
+			rss = get_mm_rss(p->mm);
+
+		if (oom_score > max_oom_score ||
+		    (oom_score == max_oom_score && rss > max_rss)) {
+			max_oom_score = oom_score;
+			max_rss = rss;
 			selected = p;
+		}
 	}
 	rcu_read_unlock();
 
 	if (!selected)
 		return -ESRCH;
 
-	pr_info("%s: killing process %s(%d) oom_score=%d\n",
+	pr_info("%s: killing %s(%d) oom_adj=%ld rss=%luKB\n",
 		SIMPLE_LMK_NAME, selected->comm,
-		task_pid_nr(selected), selected->signal->oom_score);
+		selected->pid, max_oom_score, max_rss);
 
-	get_task_struct(selected);
-	rcu_read_lock();
-	task_dump_lock_hold(selected);
-	rcu_read_unlock();
-	cancel_work_sync(&selected->pending_work);
 	send_sig(SIGKILL, selected, 1);
-	put_task_struct(selected);
+	killed = 1;
 
-	return 0;
+	return killed ? 0 : -ESRCH;
 }
 
-static void simple_lmk_check(struct work_struct *work)
+static void simple_lmk_work_func(struct work_struct *work)
 {
-	unsigned long free_kb;
-	int i;
+	int killed;
+	unsigned long free_kb, total_kb, threshold_kb;
 
 	free_kb = get_free_memory_kb();
+	total_kb = get_total_memory_kb();
+	threshold_kb = total_kb * minfree_percent / 100;
 
-	for (i = 0; i < ARRAY_SIZE(lmk_minfree); i++) {
-		int minfree_kb = lmk_minfree[i] * 4; /* convert pages to KB */
-		if (free_kb < minfree_kb) {
-			int kills = lmk_deadline;
-			while (kills > 0) {
-				if (simple_lmk_kill_process() != 0)
-					break;
-				kills--;
-			}
-			break;
+	if (free_kb < threshold_kb) {
+		/* Kill up to 5 processes per cycle */
+		int i;
+		for (i = 0; i < 5; i++) {
+			killed = simple_lmk_kill_one();
+			if (killed < 0)
+				break;
 		}
+		if (killed >= 0)
+			pr_info("%s: killed %d process(es), free=%luKB total=%luKB\n",
+				SIMPLE_LMK_NAME, i, free_kb, total_kb);
 	}
 
-	schedule_work_delayed(&lmk_work, SIMPLE_LMK_DELAY);
+	/* Schedule next check */
+	INIT_DELAYED_WORK(&lmk_work, simple_lmk_work_func);
+	schedule_delayed_work(&lmk_work, msecs_to_jiffies(SIMPLE_LMK_DELAY_MS));
 }
 
 static int __init simple_lmk_init(void)
@@ -108,22 +116,24 @@ static int __init simple_lmk_init(void)
 	if (!lmk_wq)
 		return -ENOMEM;
 
-	INIT_WORK(&lmk_work, simple_lmk_check);
-	schedule_work(&lmk_work);
+	INIT_DELAYED_WORK(&lmk_work, simple_lmk_work_func);
+	schedule_delayed_work(&lmk_work, msecs_to_jiffies(SIMPLE_LMK_DELAY_MS));
 
-	pr_info("%s: initialized\n", SIMPLE_LMK_NAME);
+	pr_info("%s: initialized (threshold=%d%%)\n",
+		SIMPLE_LMK_NAME, minfree_percent);
 	return 0;
 }
 
 static void __exit simple_lmk_exit(void)
 {
-	cancel_work_sync(&lmk_work);
+	cancel_delayed_work_sync(&lmk_work);
 	destroy_workqueue(lmk_wq);
 	pr_info("%s: removed\n", SIMPLE_LMK_NAME);
 }
 
 module_init(simple_lmk_init);
 module_exit(simple_lmk_exit);
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("UMI Kernel Team");
-MODULE_DESCRIPTION("Simple Low Memory Killer for Android");
+MODULE_DESCRIPTION("Simple Low Memory Killer for Android 4.19");

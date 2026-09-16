@@ -2,36 +2,32 @@
 /*
  * Boeffla Wakelock Blocker
  *
- * Blocks spurious wakelocks from waking the system,
- * reducing idle battery drain caused by misbehaving drivers.
+ * Provides a sysfs interface to control wakelock blocking behavior.
+ * Reduces idle battery drain by allowing selective wakelock suppression.
  *
- * Based on the Boeffla Kernel wakelock blocker concept.
+ * Thin sysfs toggle driver for Android kernels.
  */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/fs.h>
-#include <linux/seq_file.h>
-#include <linux/miscdevice.h>
-#include <linux/uaccess.h>
-#include <linux/workqueue.h>
-#include <linux/pm_wakeup.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
+#include <linux/slab.h>
 
 #define BWB_NAME "boeffla_wakelock_blocker"
-#define BWB_PATH "/proc/boeffla/wakelock_blocker"
-#define BWB_BUF_SIZE 256
 
 static int wkb_enabled = 1;
-static int wkb_verbose = 0;
 
-static ssize_t wkb_show(struct kobject *kobj, struct kobj_attribute *attr,
-			char *buf)
+static ssize_t wakelock_blocker_enable_show(struct kobject *kobj,
+					     struct kobj_attribute *attr,
+					     char *buf)
 {
 	return sprintf(buf, "%d\n", wkb_enabled);
 }
 
-static ssize_t wkb_store(struct kobject *kobj, struct kobj_attribute *attr,
-			 const char *buf, size_t count)
+static ssize_t wakelock_blocker_enable_store(struct kobject *kobj,
+					      struct kobj_attribute *attr,
+					      const char *buf, size_t count)
 {
 	int val;
 
@@ -39,15 +35,16 @@ static ssize_t wkb_store(struct kobject *kobj, struct kobj_attribute *attr,
 		return -EINVAL;
 
 	wkb_enabled = val ? 1 : 0;
-	if (wkb_verbose)
-		pr_info("%s: wakelock blocking %s\n",
-			BWB_NAME, wkb_enabled ? "enabled" : "disabled");
+	pr_info("%s: wakelock blocking %s\n",
+		BWB_NAME, wkb_enabled ? "enabled" : "disabled");
 
 	return count;
 }
 
 static struct kobj_attribute wkb_enable_attr =
-	__ATTR(wakelock_blocker_enable, 0644, wkb_show, wkb_store);
+	__ATTR(wakelock_blocker_enable, 0644,
+	       wakelock_blocker_enable_show,
+	       wakelock_blocker_enable_store);
 
 static struct attribute *wkb_attrs[] = {
 	&wkb_enable_attr.attr,
