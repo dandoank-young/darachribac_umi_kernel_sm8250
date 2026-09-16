@@ -267,14 +267,31 @@ jobs:
         # ---- Required DISABLE for internet to work on older kernels ----
         sc --disable ANDROID_PARANOID_NETWORK
 
-        # ---- User namespaces (fixes Docker unsafe procfs) ----
-        sc --enable USER_NS
+        # ---- User namespaces (optional; only needed for Docker unsafe procfs) ----
+        sc --disable USER_NS
 
         echo "==> Defconfig updated. Diff vs original:"
         diff -u "${DEFCONFIG}.orig" "$DEFCONFIG" || true
 
         echo "==> Final 60 lines of defconfig:"
         tail -n 60 "$DEFCONFIG"
+
+    - name: Minimize Defconfig
+      run: |
+        set -e
+        DEVICE="${{ github.event.inputs.device }}"
+        DEFCONFIG="arch/arm64/configs/${DEVICE}_defconfig"
+        # Re-run make defconfig to populate .config from the modified defconfig
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        make defconfig
+        # savedefconfig strips every option that matches kernel defaults,
+        # leaving only Droidspaces-specific overrides + original customizations
+        make savedefconfig
+        mv defconfig "$DEFCONFIG"
+        echo "==> Minimized defconfig (${DEVICE}):"
+        wc -l "$DEFCONFIG"
+        tail -n 40 "$DEFCONFIG"
 
     - name: Run Build Script
       run: |
