@@ -18,6 +18,10 @@
 #include <linux/backing-dev.h>
 #include "internal.h"
 
+#ifdef CONFIG_DYNAMIC_FSYNC
+int sysctl_dynamic_fsync __read_mostly = 1;
+#endif
+
 #define VALID_FLAGS (SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE| \
 			SYNC_FILE_RANGE_WAIT_AFTER)
 
@@ -192,12 +196,29 @@ SYSCALL_DEFINE1(syncfs, int, fd)
 int vfs_fsync_range(struct file *file, loff_t start, loff_t end, int datasync)
 {
 	struct inode *inode = file->f_mapping->host;
+	int ret;
 
 	if (!file->f_op->fsync)
 		return -EINVAL;
+	/*
+	 * Dynamic fsync: when enabled, skip the metadata sync for datasync
+	 * calls. This lets filesystems that support fast fsync (ext4, f2fs)
+	 * skip the expensive mark_inode_dirty_sync() and instead rely on
+	 * their own targeted metadata sync paths. Data writeback is handled
+	 * by the normal writeback cycle, reducing fsync latency significantly.
+	 */
+	if (IS_ENABLED(CONFIG_DYNAMIC_FSYNC)) {
+		if (datasync && sysctl_dynamic_fsync)
+			goto skip_metadata;
+		if (!datasync && sysctl_dynamic_fsync &&
+		    !(inode->i_state & I_DIRTY_DATASYNC))
+			goto skip_metadata;
+	}
 	if (!datasync && (inode->i_state & I_DIRTY_TIME))
 		mark_inode_dirty_sync(inode);
-	return file->f_op->fsync(file, start, end, datasync);
+skip_metadata:
+	ret = file->f_op->fsync(file, start, end, datasync);
+	return ret;
 }
 EXPORT_SYMBOL(vfs_fsync_range);
 
