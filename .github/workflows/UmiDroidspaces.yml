@@ -126,9 +126,6 @@ jobs:
         for patch_file in "$PATCH_DIR"/*.patch; do
           patch_name="$(basename "$patch_file")"
 
-          # Skip cgroup prefix patch — unnecessary for ds v6.5.5+ and can cause reboots on 4.19 vendor kernels
-          [[ "$patch_name" == *cgroup* ]] && { echo "==> Skipping ${patch_name} (cgroup patch skipped for droidspaces compat)"; continue; }
-
           # Determine the first target path from the patch header so we can
           # check whether the file exists in this tree.
           target="$(grep -m1 '^diff --git ' "$patch_file" | sed -E 's#^diff --git a/([^ ]+) b/.*#\1#')"
@@ -267,13 +264,6 @@ jobs:
         sc --enable NF_NAT_IPV4            || true
         sc --enable IP_NF_NAT              || true
 
-        # ---- Lower memory pressure: remove non-essential IP_SET configs ----
-        sc --disable IP_SET                || true
-        sc --disable IP_SET_HASH_IP        || true
-        sc --disable IP_SET_HASH_NET       || true
-        sc --disable NETFILTER_XT_SET      || true
-        sc --disable NETFILTER_XT_MATCH_RECENT || true
-
         # ---- Required DISABLE for internet to work on older kernels ----
         sc --disable ANDROID_PARANOID_NETWORK
 
@@ -303,20 +293,6 @@ jobs:
 
         echo "Executing command: ./build_kernel.sh $ARGS"
         ./build_kernel.sh $ARGS
-
-    - name: Download Droidspaces binary
-      run: |
-        DS_VERSION="6.5.5"
-        DS_URL="https://github.com/ravindu644/Droidspaces-OSS/releases/download/v${DS_VERSION}/droidspaces-arm64"
-        wget -q -O droidspaces-binary "$DS_URL"
-        chmod +x droidspaces-binary
-
-    - name: Add Droidspaces to AnyKernel
-      run: |
-        mkdir -p anykernel/vendor/bin
-        cp droidspaces-binary anykernel/vendor/bin/droidspaces
-        # Create the expected symlink structure for droidspaces lookup
-        ln -sf /data/local/Droidspaces/bin/droidspaces anykernel/vendor/bin/droidspaces-link
 
     - name: Upload Flashable ZIP
       uses: actions/upload-artifact@v7
