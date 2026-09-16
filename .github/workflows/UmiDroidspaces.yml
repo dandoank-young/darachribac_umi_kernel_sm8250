@@ -281,17 +281,57 @@ jobs:
         set -e
         DEVICE="${{ github.event.inputs.device }}"
         DEFCONFIG="arch/arm64/configs/${DEVICE}_defconfig"
-        # Re-run make defconfig to populate .config from the modified defconfig
+
+        if [ ! -f "$DEFCONFIG" ]; then
+          echo "!! ERROR: $DEFCONFIG not found"
+          exit 1
+        fi
+
+        # Use the same toolchain that build_kernel.sh uses (zyc-clang).
         export ARCH=arm64
-        export CROSS_COMPILE=aarch64-linux-gnu-
-        make defconfig
-        # savedefconfig strips every option that matches kernel defaults,
-        # leaving only Droidspaces-specific overrides + original customizations
+        export PATH="$HOME/zyc-clang/bin:$PATH"
+
+        # Detect the compiler prefix provided by zyc-clang.
+        if command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
+          echo "==> Using zyc-clang's aarch64-linux-gnu- prefix"
+          export CROSS_COMPILE=aarch64-linux-gnu-
+        else
+          echo "==> aarch64-linux-gnu-gcc not found; using clang --target"
+          export CC="clang --target=aarch64-linux-gnu"
+          export CROSS_COMPILE=""
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+        fi
+
+        echo "==> Loading device defconfig: make ${DEVICE}_defconfig"
+        make "${DEVICE}_defconfig"
+
+        echo "==> Minimizing with savedefconfig"
         make savedefconfig
+
+        if [ ! -f defconfig ]; then
+          echo "!! ERROR: savedefconfig did not produce ./defconfig"
+          exit 1
+        fi
+
         mv defconfig "$DEFCONFIG"
-        echo "==> Minimized defconfig (${DEVICE}):"
+
+        echo "==> Minimized defconfig (${DEVICE}) — line count:"
         wc -l "$DEFCONFIG"
+        echo "----- Tail of minimized defconfig -----"
         tail -n 40 "$DEFCONFIG"
+
+        # Sanity check: confirm key Droidspaces options survived the minimize.
+        echo "==> Verifying critical Droidspaces options are still enabled:"
+        for opt in CONFIG_NAMESPACES CONFIG_PID_NS CONFIG_UTS_NS CONFIG_IPC_NS \
+                   CONFIG_SECCOMP CONFIG_CGROUPS CONFIG_MEMCG CONFIG_DEVTMPFS \
+                   CONFIG_NET_NS CONFIG_VETH CONFIG_BRIDGE CONFIG_NETFILTER; do
+          if grep -q "^${opt}=y" "$DEFCONFIG"; then
+            echo "  [OK]   ${opt}=y"
+          else
+            echo "  [MISS] ${opt}  <-- review this!"
+          fi
+        done
 
     - name: Run Build Script
       run: |
