@@ -900,15 +900,6 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
-#ifdef CONFIG_DYNAMIC_FSYNC
-	{
-		.procname	= "dynamic_fsync",
-		.data		= &sysctl_dynamic_fsync,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
-	},
-#endif
 #ifdef CONFIG_COREDUMP
 	{
 		.procname	= "core_uses_pid",

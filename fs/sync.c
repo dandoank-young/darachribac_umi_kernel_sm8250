@@ -17,10 +17,40 @@
 #include <linux/quotaops.h>
 #include <linux/backing-dev.h>
 #include "internal.h"
+#include <linux/init.h>
 
 #ifdef CONFIG_DYNAMIC_FSYNC
 int sysctl_dynamic_fsync __read_mostly = 1;
 #endif
+
+
+static struct ctl_table fs_sync_sysctls[] = {
+	{
+		.procname   = "dynamic_fsync",
+		.data       = &sysctl_dynamic_fsync,
+		.maxlen     = sizeof(int),
+		.mode       = 0644,
+		.proc_handler = proc_dointvec,
+	},
+	{ }
+};
+
+static struct ctl_table_header *fs_sync_sysctl_header;
+
+static int __init dynamic_fsync_init(void)
+{
+	fs_sync_sysctl_header = register_sysctl_table(fs_sync_sysctls);
+	return fs_sync_sysctl_header ? 0 : -ENOMEM;
+}
+
+static void __exit dynamic_fsync_exit(void)
+{
+	unregister_sysctl_table(fs_sync_sysctl_header);
+}
+
+module_init(dynamic_fsync_init);
+module_exit(dynamic_fsync_exit);
+
 
 #define VALID_FLAGS (SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE| \
 			SYNC_FILE_RANGE_WAIT_AFTER)
