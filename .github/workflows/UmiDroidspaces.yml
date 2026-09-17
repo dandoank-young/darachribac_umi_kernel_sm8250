@@ -77,6 +77,7 @@ jobs:
     # STEP: Apply Droidspaces patches for non-GKI (4.19) kernels
     # ============================================================
     - name: Apply Droidspaces Kernel Patches
+      id: patches
       run: |
         set -e
         echo "==> Cloning Droidspaces-OSS to obtain non-GKI patches ..."
@@ -150,6 +151,7 @@ jobs:
     # STEP: Merge Droidspaces config into the device defconfig
     # ============================================================
     - name: Merge Droidspaces Config into Defconfig
+      id: defconfig
       run: |
         set -e
         DEVICE="${{ github.event.inputs.device }}"
@@ -267,8 +269,8 @@ jobs:
         # ---- Required DISABLE for internet to work on older kernels ----
         sc --disable ANDROID_PARANOID_NETWORK
 
-        # ---- User namespaces (optional; only needed for Docker unsafe procfs) ----
-        sc --disable USER_NS
+        # ---- User namespaces (fixes Docker unsafe procfs) ----
+        sc --enable USER_NS
 
         echo "==> Defconfig updated. Diff vs original:"
         diff -u "${DEFCONFIG}.orig" "$DEFCONFIG" || true
@@ -277,6 +279,7 @@ jobs:
         tail -n 60 "$DEFCONFIG"
 
     - name: Minimize Defconfig
+      id: minimize
       run: |
         set -e
         DEVICE="${{ github.event.inputs.device }}"
@@ -347,8 +350,9 @@ jobs:
         done
 
     - name: Run Build Script
+      id: build
       run: |
-        set -e
+        set -o pipefail
         chmod +x build_kernel.sh
 
         ARGS="${{ github.event.inputs.device }}"
@@ -361,8 +365,41 @@ jobs:
           ARGS="$ARGS ${{ github.event.inputs.target_os }}"
         fi
 
-        echo "Executing command: ./build_kernel.sh $ARGS"
-        ./build_kernel.sh $ARGS
+        mkdir -p "$GITHUB_WORKSPACE/ci-logs"
+        LOG="$GITHUB_WORKSPACE/ci-logs/build.log"
+        echo "Executing command: ./build_kernel.sh $ARGS" | tee "$LOG"
+        ./build_kernel.sh $ARGS 2>&1 | tee -a "$LOG"
+        echo "BUILD_EXIT_CODE=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+        exit "${PIPESTATUS[0]}"
+
+    - name: Upload Build Logs on Failure
+      if: failure()
+      run: |
+        echo "Build failed. Uploading logs..."
+        mkdir -p "$GITHUB_WORKSPACE/ci-logs"
+        # Create a summary file with key info
+        {
+          echo "=== BUILD FAILURE SUMMARY ==="
+          echo "Device: ${{ github.event.inputs.device }}"
+          echo "KSU: ${{ github.event.inputs.ksu }}"
+          echo "Target OS: ${{ github.event.inputs.target_os }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Failed Step: ${GITHUB_STEP_NAME:-unknown}"
+          echo "Timestamp: $(date -u)"
+          echo ""
+          echo "=== TAIL OF BUILD LOG (last 200 lines) ==="
+          tail -n 200 "$GITHUB_WORKSPACE/ci-logs/build.log" 2>/dev/null || echo "No build log found"
+        } > "$GITHUB_WORKSPACE/ci-logs/failure-summary.txt"
+
+    - name: Upload Build Logs Artifact
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: build-logs-${{ github.event.inputs.device }}-${{ github.event.inputs.target_os }}-${{ github.run_id }}
+        path: ci-logs/
+        compression-level: 6
+        retention-days: 7
 
     - name: Upload Flashable ZIP
       uses: actions/upload-artifact@v7
