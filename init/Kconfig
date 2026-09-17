@@ -486,6 +486,29 @@ config SCHED_WALT
 	used to guide task placement as well as task frequency requirements
 	for cpufreq governors.
 
+config PELT_UTIL_HALFLIFE_32
+	bool "PELT utility half-life 32ms (default)"
+	depends on SMP
+	default y
+	help
+	  Use the default 32ms PELT half-life. This is the standard Linux
+	  scheduler behavior.
+
+config PELT_UTIL_HALFLIFE_16
+	bool "PELT utility half-life 16ms"
+	depends on SMP
+	help
+	  Use a 16ms PELT half-life for faster scheduler response to
+	  load changes. Improves interactivity and responsiveness on
+	  mobile devices.
+
+config PELT_UTIL_HALFLIFE_8
+	bool "PELT utility half-life 8ms"
+	depends on SMP
+	help
+	  Use an 8ms PELT half-life for aggressive scheduler response.
+	  May increase power consumption.
+
 config HAVE_SCHED_AVG_IRQ
 	def_bool y
 	depends on IRQ_TIME_ACCOUNTING || PARAVIRT_TIME_ACCOUNTING
