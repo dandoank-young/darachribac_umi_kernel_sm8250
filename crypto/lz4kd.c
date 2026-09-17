@@ -13,7 +13,7 @@
 #include <linux/crypto.h>
 #include <linux/vmalloc.h>
 #include <linux/lz4.h>
-#include <crypto/internal/scomp.h>
+#include <crypto/internal/scompress.h>
 
 struct lz4kd_ctx {
 	void *lz4_comp_mem;
