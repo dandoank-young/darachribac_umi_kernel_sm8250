@@ -1851,6 +1851,17 @@ config CRYPTO_LZ4HC
 	help
 	  This is the LZ4 high compression mode algorithm.
 
+
+config CRYPTO_LZ4KD
+	tristate "LZ4KD compression algorithm"
+	select CRYPTO_ALGAPI
+	select CRYPTO_ACOMP2
+	select LZ4_COMPRESS
+	select LZ4_DECOMPRESS
+	help
+	  LZ4KD is a faster variant of LZ4 optimised for kernel-space
+	  decompression, used as a ZRAM compressor on Android.
+
 config CRYPTO_ZSTD
 	tristate "Zstd compression algorithm"
 	select CRYPTO_ALGAPI
