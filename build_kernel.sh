@@ -221,8 +221,6 @@ build_target() {
             -e PERF_CRITICAL_RT_TASK \
             -e SF_BINDER \
             -e OVERLAY_FS \
-            -e MIGT \
-            -e MIGT_ENERGY_MODEL \
             -e MIHW \
             -e PACKAGE_RUNTIME_INFO \
             -e BINDER_OPT \
