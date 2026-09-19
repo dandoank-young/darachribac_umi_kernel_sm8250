@@ -353,6 +353,21 @@ jobs:
             echo "  [MISS] ${opt}  <-- review this!"
           fi
         done
+        
+      - name: Modify kernel version string (Remove cip/st extra suffix)
+        run: |
+          sed -i 's|^EXTRAVERSION =.*|EXTRAVERSION = |' Makefile
+            
+          find arch/arm64/configs -maxdepth 1 -type f -name "*defconfig" | while read -r file; do
+            sed -i '/CONFIG_LOCALVERSION_AUTO/d' "$file"
+            echo 'CONFIG_LOCALVERSION_AUTO=n' >> "$file"
+            sed -i '/CONFIG_LOCALVERSION=/d' "$file"
+            echo 'CONFIG_LOCALVERSION=""' >> "$file"
+          done
+            
+          echo '#!/bin/sh' > scripts/setlocalversion
+          echo 'echo ""' >> scripts/setlocalversion
+          chmod +x scripts/setlocalversion
 
     - name: Run Build Script
       id: build
