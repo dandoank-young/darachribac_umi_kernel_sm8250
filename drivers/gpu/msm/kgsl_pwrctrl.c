@@ -1614,6 +1614,15 @@ static DEVICE_ATTR_RO(clock_mhz);
 static DEVICE_ATTR_RO(freq_table_mhz);
 static DEVICE_ATTR_RW(pwrscale);
 
+static ssize_t gpu_speed_bin_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct kgsl_device *device = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%u\n", device->speed_bin);
+}
+static DEVICE_ATTR_RO(gpu_speed_bin);
+
 static const struct attribute *pwrctrl_attr_list[] = {
 	&dev_attr_gpuclk.attr,
 	&dev_attr_max_gpuclk.attr,
@@ -1642,6 +1651,7 @@ static const struct attribute *pwrctrl_attr_list[] = {
 	&dev_attr_freq_table_mhz.attr,
 	&dev_attr_temp.attr,
 	&dev_attr_pwrscale.attr,
+	&dev_attr_gpu_speed_bin.attr,
 	NULL,
 };
 
