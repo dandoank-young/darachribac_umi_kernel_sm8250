@@ -282,7 +282,6 @@ jobs:
 
         echo "==> Final 60 lines of defconfig:"
         tail -n 60 "$DEFCONFIG"
-
     - name: Minimize Defconfig
       id: minimize
       run: |
