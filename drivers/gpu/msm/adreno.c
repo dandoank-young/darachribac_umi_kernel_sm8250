@@ -1587,6 +1587,29 @@ static int adreno_probe(struct platform_device *pdev)
 	if (status)
 		return status;
 
+	/* Speedbin efuse read */
+	{
+		struct nvmem_cell *speed_bin_cell;
+		size_t speed_bin_len;
+		u8 *speed_bin_buf;
+
+		speed_bin_cell = nvmem_cell_get(&pdev->dev, "speed_bin");
+		if (!IS_ERR_OR_NULL(speed_bin_cell)) {
+			speed_bin_buf = nvmem_cell_read(speed_bin_cell, &speed_bin_len);
+			if (!IS_ERR_OR_NULL(speed_bin_buf)) {
+				/* 3-bit field starting at bit 5 of the first byte */
+				device->speed_bin = (speed_bin_buf[0] >> 5) & 0x7;
+				kfree(speed_bin_buf);
+			} else {
+				device->speed_bin = 0;
+			}
+			nvmem_cell_put(speed_bin_cell);
+		} else {
+			device->speed_bin = 0;
+		}
+		dev_info(&pdev->dev, "GPU speed_bin = %u\n", device->speed_bin);
+	}
+
 	/* Get the chip ID from the DT and set up target specific parameters */
 	if (adreno_identify_gpu(adreno_dev))
 		return -ENODEV;

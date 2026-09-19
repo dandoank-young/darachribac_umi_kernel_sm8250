@@ -265,6 +265,9 @@ struct kgsl_device {
 	const struct kgsl_functable *ftbl;
 	struct work_struct idle_check_ws;
 	struct timer_list idle_timer;
+	/* Speedbin read from qfprom efuse at probe */
+	u32 speed_bin;
+
 	struct kgsl_pwrctrl pwrctrl;
 	int open_count;
 

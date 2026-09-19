@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,6 +14,7 @@
  */
 
 #include <linux/notifier.h>
+#include <drm/drm_notifier.h>
 
 static BLOCKING_NOTIFIER_HEAD(mi_drm_notifier_list);
 
@@ -54,4 +56,3 @@ int mi_drm_notifier_call_chain(unsigned long val, void *v)
 	return blocking_notifier_call_chain(&mi_drm_notifier_list, val, v);
 }
 EXPORT_SYMBOL(mi_drm_notifier_call_chain);
-

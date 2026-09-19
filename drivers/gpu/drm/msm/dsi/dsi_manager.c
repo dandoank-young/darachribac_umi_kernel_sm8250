@@ -13,6 +13,7 @@
 
 #include "msm_kms.h"
 #include "dsi.h"
+#include "drm/drm_notifier.h"
 
 #define DSI_CLOCK_MASTER	DSI_0
 #define DSI_CLOCK_SLAVE		DSI_1
@@ -369,10 +370,14 @@ static void dsi_mgr_bridge_pre_enable(struct drm_bridge *bridge)
 	struct msm_dsi_phy_shared_timings phy_shared_timings[DSI_MAX];
 	bool is_dual_dsi = IS_DUAL_DSI();
 	int ret;
+	enum drm_notifier_data notifier_data;
 
 	DBG("id=%d", id);
 	if (!msm_dsi_device_connected(msm_dsi))
 		return;
+
+	notifier_data = MI_DRM_BLANK_UNBLANK;
+	mi_drm_notifier_call_chain(MI_DRM_EVENT_BLANK, &notifier_data);
 
 	ret = dsi_mgr_phy_enable(id, phy_shared_timings);
 	if (ret)
@@ -474,8 +479,12 @@ static void dsi_mgr_bridge_post_disable(struct drm_bridge *bridge)
 	struct msm_dsi_pll *src_pll;
 	bool is_dual_dsi = IS_DUAL_DSI();
 	int ret;
+	enum drm_notifier_data notifier_data;
 
 	DBG("id=%d", id);
+
+	notifier_data = MI_DRM_BLANK_POWERDOWN;
+	mi_drm_notifier_call_chain(MI_DRM_EARLY_EVENT_BLANK, &notifier_data);
 
 	if (!msm_dsi_device_connected(msm_dsi))
 		return;
