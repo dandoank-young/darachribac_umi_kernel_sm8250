@@ -44,9 +44,24 @@
 			opp-microvolt = <0x42>;
 		};
 
+		opp-480000000 {
+			opp-hz = <0x0 0x1c9c3800>;
+			opp-microvolt = <0x30>;
+		};
+
+		opp-381000000 {
+			opp-hz = <0x0 0x16bdd780>;
+			opp-microvolt = <0x18>;
+		};
+
 		opp-410000000 {
 			opp-hz = <0x0 0x18701a80>;
 			opp-microvolt = <0x10>;
+		};
+
+		opp-290000000 {
+			opp-hz = <0x0 0x11457e00>;
+			opp-microvolt = <0x5>;
 		};
 
 		opp-300000000 {
