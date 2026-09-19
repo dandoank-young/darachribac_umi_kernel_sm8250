@@ -24,39 +24,44 @@
 	gpu_opp_table: gpu-opp-table {
 		compatible = "operating-points-v2";
 
-		opp-480000000 {
-			opp-hz = /bits/ 64 <480000000>;
-			opp-microvolt = <RPMH_REGULATOR_LEVEL_SVS_L1>;
+		opp-893000000 {
+			opp-hz = <0x0 0x353a1940>;
+			opp-microvolt = <0x104>;
+		};
+
+		opp-725000000 {
+			opp-hz = <0x0 0x2b369f40>;
+			opp-microvolt = <0xe1>;
+		};
+
+		opp-600000000 {
+			opp-hz = <0x0 0x23c34600>;
+			opp-microvolt = <0x82>;
+		};
+
+		opp-510000000 {
+			opp-hz = <0x0 0x1e65fb80>;
+			opp-microvolt = <0x42>;
 		};
 
 		opp-410000000 {
-			opp-hz = /bits/ 64 <410000000>;
-			opp-microvolt = <RPMH_REGULATOR_LEVEL_RETENTION>;
-		};
-
-		opp-381000000 {
-			opp-hz = /bits/ 64 <381000000>;
-			opp-microvolt = <RPMH_REGULATOR_LEVEL_SVS>;
+			opp-hz = <0x0 0x18701a80>;
+			opp-microvolt = <0x10>;
 		};
 
 		opp-300000000 {
-			opp-hz = /bits/ 64 <300000000>;
-			opp-microvolt = <1>;
-		};
-
-		opp-290000000 {
-			opp-hz = /bits/ 64 <290000000>;
-			opp-microvolt = <RPMH_REGULATOR_LEVEL_LOW_SVS>;
+			opp-hz = <0x0 0x11e1a300>;
+			opp-microvolt = <0x1>;
 		};
 
 		opp-200000000 {
-			opp-hz = /bits/ 64 <200000000>;
-			opp-microvolt = <1>;
+			opp-hz = <0x0 0xbebc200>;
+			opp-microvolt = <0x1>;
 		};
 
 		opp-100000000 {
-			opp-hz = /bits/ 64 <100000000>;
-			opp-microvolt = <1>;
+			opp-hz = <0x0 0x5f5e100>;
+			opp-microvolt = <0x1>;
 		};
 	};
 
