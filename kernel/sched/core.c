@@ -7405,6 +7405,9 @@ void __init sched_init(void)
 		atomic_set(&rq->nr_iowait, 0);
 	}
 
+	#ifdef CONFIG_SCHED_BORE
+	sched_init_bore();
+	#endif // CONFIG_SCHED_BORE
 	BUG_ON(alloc_related_thread_groups());
 
 	set_load_weight(&init_task, false);

@@ -52,6 +52,10 @@ extern void init_idle(struct task_struct *idle, int cpu);
 
 extern int sched_fork(unsigned long clone_flags, struct task_struct *p);
 extern void sched_post_fork(struct task_struct *p);
+#ifdef CONFIG_SCHED_BORE
+extern void sched_fork_bore(struct task_struct *p);
+extern void sched_init_bore(void);
+#endif // CONFIG_SCHED_BORE
 extern void sched_dead(struct task_struct *p);
 
 void __noreturn do_task_dead(void);

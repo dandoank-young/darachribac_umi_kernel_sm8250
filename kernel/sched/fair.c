@@ -156,6 +156,181 @@ unsigned int normalized_sysctl_sched_wakeup_granularity	= 1000000UL;
 
 const_debug unsigned int sysctl_sched_migration_cost	= 500000UL;
 DEFINE_PER_CPU_READ_MOSTLY(int, sched_load_boost);
+#ifdef CONFIG_SCHED_BORE
+/*
+ * Burst-Oriented Response Enhancer (BORE) CPU Scheduler
+ * Copyright (C) 2021-2024 Masahito Suzuki <firelzrd@gmail.com>
+ */
+
+uint __read_mostly sched_bore                   = 1;
+uint __read_mostly sched_burst_score_rounding   = 0;
+uint __read_mostly sched_burst_smoothness_long  = 1;
+uint __read_mostly sched_burst_smoothness_short = 0;
+uint __read_mostly sched_burst_fork_atavistic   = 2;
+uint __read_mostly sched_burst_penalty_offset   = 22;
+uint __read_mostly sched_burst_penalty_scale    = 1280;
+uint __read_mostly sched_burst_cache_lifetime   = 60000000;
+
+#define MAX_BURST_PENALTY (39U << 2)
+
+static inline u32 log2plus1_u64_u32f8(u64 v)
+{
+	u32 msb = fls64(v);
+	s32 excess_bits = msb - 9;
+	u8 fractional = (0 <= excess_bits) ? v >> excess_bits : v << -excess_bits;
+	return msb << 8 | fractional;
+}
+
+static inline u32 calc_burst_penalty(u64 burst_time)
+{
+	u32 greed, tolerance, penalty, scaled_penalty;
+
+	greed = log2plus1_u64_u32f8(burst_time);
+	tolerance = sched_burst_penalty_offset << 8;
+	penalty = max(0, (s32)greed - (s32)tolerance);
+	scaled_penalty = penalty * sched_burst_penalty_scale >> 16;
+
+	return min(MAX_BURST_PENALTY, scaled_penalty);
+}
+
+static inline u64 scale_slice(u64 delta, struct sched_entity *se)
+{
+	return mul_u64_u32_shr(delta, sched_prio_to_wmult[se->burst_score], 22);
+}
+
+static void update_burst_score(struct sched_entity *se)
+{
+	u32 penalty = se->burst_penalty;
+	if (sched_burst_score_rounding)
+		penalty += 0x2U;
+	se->burst_score = penalty >> 2;
+}
+
+static void update_burst_penalty(struct sched_entity *se)
+{
+	se->curr_burst_penalty = calc_burst_penalty(se->burst_time);
+	update_burst_score(se);
+}
+
+static inline u32 binary_smooth(u32 new_val, u32 old)
+{
+	int increment = new_val - old;
+	return (0 <= increment) ?
+		old + (increment >> (int)sched_burst_smoothness_long) :
+		old - ((-increment) >> (int)sched_burst_smoothness_short);
+}
+
+static void restart_burst(struct sched_entity *se)
+{
+	se->burst_penalty = se->prev_burst_penalty =
+		binary_smooth(se->curr_burst_penalty, se->prev_burst_penalty);
+	se->curr_burst_penalty = 0;
+	se->burst_time = 0;
+	update_burst_score(se);
+}
+
+void inline sched_fork_bore(struct task_struct *p)
+{
+	p->se.burst_time = 0;
+	p->se.curr_burst_penalty = 0;
+	p->se.burst_score = 0;
+	p->se.child_burst_last_cached = 0;
+}
+
+static inline bool task_is_inheritable(struct task_struct *p)
+{
+	return (p->sched_class == &fair_sched_class);
+}
+
+static inline bool child_burst_cache_expired(struct task_struct *p, u64 now)
+{
+	u64 expiration_time = p->se.child_burst_last_cached + sched_burst_cache_lifetime;
+	return ((s64)(expiration_time - now) < 0);
+}
+
+static void __update_child_burst_cache(struct task_struct *p, u32 cnt, u32 sum, u64 now)
+{
+	u8 avg = 0;
+	if (cnt)
+		avg = sum / cnt;
+	p->se.child_burst = max(avg, p->se.burst_penalty);
+	p->se.child_burst_cnt = cnt;
+	p->se.child_burst_last_cached = now;
+}
+
+static inline void update_child_burst_direct(struct task_struct *p, u64 now)
+{
+	struct task_struct *child;
+	u32 cnt = 0;
+	u32 sum = 0;
+
+	list_for_each_entry(child, &p->children, sibling) {
+		if (!task_is_inheritable(child))
+			continue;
+		cnt++;
+		sum += child->se.burst_penalty;
+	}
+	__update_child_burst_cache(p, cnt, sum, now);
+}
+
+static inline u8 __inherit_burst_direct(struct task_struct *p, u64 now)
+{
+	struct task_struct *parent = p->real_parent;
+	if (child_burst_cache_expired(parent, now))
+		update_child_burst_direct(parent, now);
+	return parent->se.child_burst;
+}
+
+static inline u8 __inherit_burst_topological(struct task_struct *p, u64 now)
+{
+	struct task_struct *parent = p->real_parent;
+	struct task_struct *grp;
+	u32 cnt = 0, sum = 0;
+	u8 burst_cache = 0;
+
+	/* Walk up the group scheduling tree to find an inheritable ancestor */
+	list_for_each_entry(grp, &parent->sibling, sibling) {
+		if (!task_is_inheritable(grp))
+			continue;
+		if (child_burst_cache_expired(grp, now))
+			update_child_burst_direct(grp, now);
+		burst_cache = max(burst_cache, grp->se.child_burst);
+		cnt++;
+		sum += grp->se.burst_penalty;
+	}
+
+	if (cnt) {
+		u8 avg = sum / cnt;
+		return max(avg, burst_cache);
+	}
+	return parent->se.burst_penalty;
+}
+
+static inline void inherit_burst(struct task_struct *p)
+{
+	u8 burst_cache;
+	u64 now = ktime_get_ns();
+
+	read_lock(&tasklist_lock);
+	burst_cache = likely(sched_burst_fork_atavistic) ?
+		__inherit_burst_topological(p, now) :
+		__inherit_burst_direct(p, now);
+	read_unlock(&tasklist_lock);
+
+	p->se.prev_burst_penalty = max(p->se.prev_burst_penalty, burst_cache);
+}
+
+void sched_init_bore(void)
+{
+	init_task.se.burst_time = 0;
+	init_task.se.prev_burst_penalty = 0;
+	init_task.se.curr_burst_penalty = 0;
+	init_task.se.burst_penalty = 0;
+	init_task.se.burst_score = 0;
+	init_task.se.child_burst_last_cached = 0;
+}
+#endif // CONFIG_SCHED_BORE
+
 
 #ifdef CONFIG_SMP
 /*
@@ -5552,6 +5727,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	int task_new = !(flags & ENQUEUE_WAKEUP);
+#ifdef CONFIG_SCHED_BORE
+	int task_sleep = flags & DEQUEUE_SLEEP;
+#endif // CONFIG_SCHED_BORE
 
 	/*
 	 * The code below (indirectly) updates schedutil which looks at
