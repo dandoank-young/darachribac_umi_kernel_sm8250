@@ -1106,6 +1106,28 @@ config SCHED_BORE
 
 	  If unsure, say Y.
 
+config LRU_GEN
+	bool "Multi-Gen LRU (MGLRU)"
+	default y
+	depends on MMU
+	help
+	  The Multi-Gen LRU (MGLRU) is a page reclaim optimization that
+	  tracks page accesses across multiple generations to improve
+	  reclaim efficiency. It replaces the traditional single-LRU
+	  approach with a generation-based aging mechanism.
+
+	  If unsure, say Y.
+
+config LRU_GEN_ENABLED
+	bool "Enable MGLRU by default"
+	depends on LRU_GEN
+	default y
+	help
+	  Enable the Multi-Gen LRU by default. Can be disabled at boot
+	  via the lru_gen_enabled boot parameter.
+
+	  If unsure, say Y.
+
 config PROC_PID_CPUSET
 	bool "Include legacy /proc/<pid>/cpuset file"
 	depends on CPUSETS
