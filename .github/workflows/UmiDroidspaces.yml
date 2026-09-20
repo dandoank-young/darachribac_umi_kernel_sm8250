@@ -339,19 +339,18 @@ jobs:
 
         # Re-inject critical optimization options that savedefconfig strips
         echo "==> Re-injecting stripped optimization options into $DEFCONFIG ..."
-        cat << 'EOF' >> "$DEFCONFIG"
-# Re-injected optimization options (stripped by savedefconfig)
-CONFIG_TCP_CONG_BBR=y
-CONFIG_TCP_CONG_VEGAS=y
-CONFIG_IP_NF_TARGET_TTL=y
-CONFIG_DYNAMIC_FSYNC=y
-CONFIG_IOSCHED_ANXIETY=y
-CONFIG_DEFAULT_ANXIETY=y
-CONFIG_CFG80211_DEFAULT_PS=y
-CONFIG_LTO_CLANG=y
-CONFIG_CFI_CLANG=y
-CONFIG_SIMPLE_LMK=y
-EOF
+        echo "" >> "$DEFCONFIG"
+        echo "# Re-injected optimization options (stripped by savedefconfig)" >> "$DEFCONFIG"
+        echo "CONFIG_TCP_CONG_BBR=y" >> "$DEFCONFIG"
+        echo "CONFIG_TCP_CONG_VEGAS=y" >> "$DEFCONFIG"
+        echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$DEFCONFIG"
+        echo "CONFIG_DYNAMIC_FSYNC=y" >> "$DEFCONFIG"
+        echo "CONFIG_IOSCHED_ANXIETY=y" >> "$DEFCONFIG"
+        echo "CONFIG_DEFAULT_ANXIETY=y" >> "$DEFCONFIG"
+        echo "CONFIG_CFG80211_DEFAULT_PS=y" >> "$DEFCONFIG"
+        echo "CONFIG_LTO_CLANG=y" >> "$DEFCONFIG"
+        echo "CONFIG_CFI_CLANG=y" >> "$DEFCONFIG"
+        echo "CONFIG_SIMPLE_LMK=y" >> "$DEFCONFIG"
 
         echo "==> Minimized defconfig (${DEVICE}) — line count:"
         wc -l "$DEFCONFIG"
