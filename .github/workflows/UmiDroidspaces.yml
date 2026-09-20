@@ -340,7 +340,6 @@ jobs:
         # Re-inject critical optimization options that savedefconfig strips
         echo "==> Re-injecting stripped optimization options into $DEFCONFIG ..."
         cat << 'EOF' >> "$DEFCONFIG"
-
 # Re-injected optimization options (stripped by savedefconfig)
 CONFIG_TCP_CONG_BBR=y
 CONFIG_TCP_CONG_VEGAS=y
