@@ -337,6 +337,23 @@ jobs:
         cp "$TMP_TREE/defconfig" "$DEFCONFIG"
         rm -rf "$TMP_TREE"
 
+        # Re-inject critical optimization options that savedefconfig strips
+        echo "==> Re-injecting stripped optimization options into $DEFCONFIG ..."
+        cat << 'EOF' >> "$DEFCONFIG"
+
+# Re-injected optimization options (stripped by savedefconfig)
+CONFIG_TCP_CONG_BBR=y
+CONFIG_TCP_CONG_VEGAS=y
+CONFIG_IP_NF_TARGET_TTL=y
+CONFIG_DYNAMIC_FSYNC=y
+CONFIG_IOSCHED_ANXIETY=y
+CONFIG_DEFAULT_ANXIETY=y
+CONFIG_CFG80211_DEFAULT_PS=y
+CONFIG_LTO_CLANG=y
+CONFIG_CFI_CLANG=y
+CONFIG_SIMPLE_LMK=y
+EOF
+
         echo "==> Minimized defconfig (${DEVICE}) — line count:"
         wc -l "$DEFCONFIG"
         echo "----- Tail of minimized defconfig -----"
@@ -351,6 +368,19 @@ jobs:
             echo "  [OK]   ${opt}=y"
           else
             echo "  [MISS] ${opt}  <-- review this!"
+          fi
+        done
+
+        # Verify re-injected optimization options are present
+        echo "==> Verifying re-injected optimization options:"
+        for opt in CONFIG_TCP_CONG_BBR CONFIG_TCP_CONG_VEGAS CONFIG_IP_NF_TARGET_TTL \
+                   CONFIG_DYNAMIC_FSYNC CONFIG_IOSCHED_ANXIETY CONFIG_DEFAULT_ANXIETY \
+                   CONFIG_CFG80211_DEFAULT_PS CONFIG_LTO_CLANG CONFIG_CFI_CLANG \
+                   CONFIG_SIMPLE_LMK; do
+          if grep -q "^${opt}=y" "$DEFCONFIG"; then
+            echo "  [OK]   ${opt}=y"
+          else
+            echo "  [MISS] ${opt}  <-- re-injection failed!"
           fi
         done
 
