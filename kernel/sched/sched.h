@@ -1995,6 +1995,7 @@ extern void sched_init_granularity(void);
 #ifdef CONFIG_SCHED_BORE
 extern void sched_fork_bore(struct task_struct *p);
 extern void sched_init_bore(void);
+extern void inherit_burst(struct task_struct *p);
 #endif // CONFIG_SCHED_BORE
 extern void update_max_interval(void);
 

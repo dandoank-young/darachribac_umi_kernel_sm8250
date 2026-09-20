@@ -306,7 +306,7 @@ static inline u8 __inherit_burst_topological(struct task_struct *p, u64 now)
 	return parent->se.burst_penalty;
 }
 
-static inline void inherit_burst(struct task_struct *p)
+inline void inherit_burst(struct task_struct *p)
 {
 	u8 burst_cache;
 	u64 now = ktime_get_ns();
