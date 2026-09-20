@@ -1029,11 +1029,36 @@ EXPORT_SYMBOL(strnstr);
  */
 void *memchr(const void *s, int c, size_t n)
 {
+	const struct word_at_a_time constants = WORD_AT_A_TIME_CONSTANTS;
 	const unsigned char *p = s;
-	while (n-- != 0) {
-        	if ((unsigned char)c == *p++) {
-			return (void *)(p - 1);
+	const unsigned long value = REPEAT_BYTE(c);
+
+#ifdef CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS
+	while (n >= sizeof(unsigned long) &&
+	       !has_zero(read_word_at_a_time(p), NULL, &constants)) {
+		if (read_word_at_a_time(p) == value) {
+			unsigned long delta = find_zero(~value & (value - 1));
+			return (void *)(p + delta);
 		}
+		p += sizeof(unsigned long);
+		n -= sizeof(unsigned long);
+	}
+#else
+	while (n >= sizeof(unsigned long)) {
+		if (!has_zero(read_word_at_a_time(p), NULL, &constants)) {
+			if (read_word_at_a_time(p) == value) {
+				unsigned long delta = find_zero(~value & (value - 1));
+				return (void *)(p + delta);
+			}
+		}
+		p += sizeof(unsigned long);
+		n -= sizeof(unsigned long);
+	}
+#endif
+
+	while (n--) {
+		if (*p++ == (unsigned char)c)
+			return (void *)(p - 1);
 	}
 	return NULL;
 }
