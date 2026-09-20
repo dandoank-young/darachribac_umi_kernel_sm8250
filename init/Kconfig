@@ -1093,6 +1093,19 @@ config CPUSETS
 
 	  Say N if unsure.
 
+config SCHED_BORE
+	bool "Burst-Oriented Response Enhancer"
+	default y
+	help
+	  In Desktop and Mobile computing, one might prefer interactive
+	  tasks to keep responsive no matter what they run in the background.
+
+	  Enabling this option adds the Burst-Oriented Response Enhancer (BORE)
+	  CPU scheduler, which boosts performance for bursty/interactive workloads
+	  by tracking burst penalties and adjusting vruntime scaling accordingly.
+
+	  If unsure, say Y.
+
 config PROC_PID_CPUSET
 	bool "Include legacy /proc/<pid>/cpuset file"
 	depends on CPUSETS

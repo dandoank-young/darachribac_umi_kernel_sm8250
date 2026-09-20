@@ -491,6 +491,9 @@ print_task(struct seq_file *m, struct rq *rq, struct task_struct *p)
 #ifdef CONFIG_CGROUP_SCHED
 	SEQ_printf_task_group_path(m, task_group(p), " %s")
 #endif
+#ifdef CONFIG_SCHED_BORE
+	SEQ_printf(m, " %2d", p->se.burst_score);
+#endif // CONFIG_SCHED_BORE
 
 	SEQ_printf(m, "\n");
 }
