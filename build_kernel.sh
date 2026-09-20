@@ -274,23 +274,6 @@ build_target() {
     scripts/config --file "${OUT_DIR}/.config" -e LTO_CLANG
     scripts/config --file "${OUT_DIR}/.config" -e CFI_CLANG
     scripts/config --file "${OUT_DIR}/.config" -e SIMPLE_LMK
-
-    # Re-inject critical optimization options that olddefconfig may strip
-    echo "[*] Re-injecting critical optimization options..."
-    scripts/config --file "${OUT_DIR}/.config" -e TCP_CONG_BBR
-    scripts/config --file "${OUT_DIR}/.config" -e TCP_CONG_VEGAS
-    scripts/config --file "${OUT_DIR}/.config" -e IP_NF_TARGET_TTL
-    scripts/config --file "${OUT_DIR}/.config" -e DYNAMIC_FSYNC
-    scripts/config --file "${OUT_DIR}/.config" -e IOSCHED_ANXIETY
-    scripts/config --file "${OUT_DIR}/.config" -e DEFAULT_ANXIETY
-    scripts/config --file "${OUT_DIR}/.config" -e CFG80211_DEFAULT_PS
-    scripts/config --file "${OUT_DIR}/.config" -e LTO_CLANG
-    scripts/config --file "${OUT_DIR}/.config" -e CFI_CLANG
-    scripts/config --file "${OUT_DIR}/.config" -e SIMPLE_LMK
-
-    # ----------------------------------------------------
-    # Compilation
-    # ----------------------------------------------------
     echo "[*] Building kernel..."
     make "${MAKE_OPTS[@]}" 
 
