@@ -320,7 +320,7 @@ jobs:
         pushd "$TMP_TREE" > /dev/null
 
         echo "==> Loading device defconfig in temp tree: make ${DEVICE}_defconfig"
-        make "${DEVICE}_defconfig"
+        make LLVM=1 "${DEVICE}_defconfig"
 
         echo "==> Minimizing with savedefconfig"
         make savedefconfig
