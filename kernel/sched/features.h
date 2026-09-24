@@ -37,6 +37,11 @@ SCHED_FEAT(CACHE_HOT_BUDDY, true)
  */
 SCHED_FEAT(WAKEUP_PREEMPTION, true)
 
+/*
+ * Allow tasks with a shorter slice to preempt longer slices on wakeup.
+ */
+SCHED_FEAT(PREEMPT_SHORT, true)
+
 SCHED_FEAT(HRTICK, false)
 SCHED_FEAT(DOUBLE_TICK, false)
 SCHED_FEAT(LB_BIAS, true)
