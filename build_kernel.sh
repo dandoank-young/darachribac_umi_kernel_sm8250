@@ -274,7 +274,6 @@ build_target() {
     scripts/config --file "${OUT_DIR}/.config" -d LTO_NONE
     scripts/config --file "${OUT_DIR}/.config" -e LTO_CLANG
     scripts/config --file "${OUT_DIR}/.config" -e CFI_CLANG
-    scripts/config --file "${OUT_DIR}/.config" -e SIMPLE_LMK
     echo "[*] Building kernel..."
     make "${MAKE_OPTS[@]}" 
 

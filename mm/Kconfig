@@ -887,24 +887,6 @@ config HAVE_USERSPACE_LOW_MEMORY_KILLER
 	  Therefore, add a timeout mechanism to give the userspace
 	  low memory killer a chance to run.
 
-config SIMPLE_LMK
-	bool "Simple Low Memory Killer"
-	default y
-	depends on MMU
-	help
-	  Enable the Simple Low Memory Killer (SLMK). This is a lightweight
-	  in-kernel low memory killer that monitors free memory and kills
-	  processes when thresholds are crossed. It is more responsive than
-	  the standard OOM killer for Android workloads and works in
-	  conjunction with (not replacement of) the userspace LMKD.
-
-	  Unlike the Android LMKD which runs as a userspace daemon, SLMK
-	  runs entirely in kernel space and responds faster to memory
-	  pressure events. It uses a workqueue-based approach with a
-	  2-second check interval.
-
-	  If unsure, say Y.
-
 config GUP_BENCHMARK
 	bool "Enable infrastructure for get_user_pages_fast() benchmarking"
 	default n

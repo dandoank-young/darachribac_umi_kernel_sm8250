@@ -350,7 +350,6 @@ jobs:
         echo "CONFIG_CFG80211_DEFAULT_PS=y" >> "$DEFCONFIG"
         echo "CONFIG_LTO_CLANG=y" >> "$DEFCONFIG"
         echo "CONFIG_CFI_CLANG=y" >> "$DEFCONFIG"
-        echo "CONFIG_SIMPLE_LMK=y" >> "$DEFCONFIG"
 
         echo "==> Minimized defconfig (${DEVICE}) — line count:"
         wc -l "$DEFCONFIG"
@@ -373,8 +372,7 @@ jobs:
         echo "==> Verifying re-injected optimization options:"
         for opt in CONFIG_TCP_CONG_BBR CONFIG_TCP_CONG_VEGAS CONFIG_IP_NF_TARGET_TTL \
                    CONFIG_DYNAMIC_FSYNC CONFIG_IOSCHED_ANXIETY CONFIG_DEFAULT_ANXIETY \
-                   CONFIG_CFG80211_DEFAULT_PS CONFIG_LTO_CLANG CONFIG_CFI_CLANG \
-                   CONFIG_SIMPLE_LMK; do
+                   CONFIG_CFG80211_DEFAULT_PS CONFIG_LTO_CLANG CONFIG_CFI_CLANG; do
           if grep -q "^${opt}=y" "$DEFCONFIG"; then
             echo "  [OK]   ${opt}=y"
           else
