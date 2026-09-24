@@ -271,6 +271,7 @@ build_target() {
     scripts/config --file "${OUT_DIR}/.config" -e IOSCHED_ANXIETY
     scripts/config --file "${OUT_DIR}/.config" -e DEFAULT_ANXIETY
     scripts/config --file "${OUT_DIR}/.config" -e CFG80211_DEFAULT_PS
+    scripts/config --file "${OUT_DIR}/.config" -d LTO_NONE
     scripts/config --file "${OUT_DIR}/.config" -e LTO_CLANG
     scripts/config --file "${OUT_DIR}/.config" -e CFI_CLANG
     scripts/config --file "${OUT_DIR}/.config" -e SIMPLE_LMK
