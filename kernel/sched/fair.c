@@ -3098,14 +3098,23 @@ account_entity_dequeue(struct cfs_rq *cfs_rq, struct sched_entity *se)
  * memory. This allows lockless observations without ever seeing the negative
  * values.
  */
-#define sub_positive(_ptr, _val) do {				\
-	typeof(_ptr) ptr = (_ptr);				\
-	typeof(*ptr) val = (_val);				\
-	typeof(*ptr) res, var = READ_ONCE(*ptr);		\
-	res = var - val;					\
-	if (res > var)						\
-		res = 0;					\
-	WRITE_ONCE(*ptr, res);					\
+#define sub_positive(_ptr, _val) do {\t\t\t\t\\
+\ttypeof(_ptr) ptr = (_ptr);\t\t\t\t\\
+\ttypeof(*ptr) val = (_val);\t\t\t\t\\
+\ttypeof(*ptr) res, var = READ_ONCE(*ptr);\t\t\\
+\tres = var - val;\t\t\t\t\t\\
+\tif (res > var)\t\t\t\t\t\t\\
+\t\tres = 0;\t\t\t\t\t\\
+\tWRITE_ONCE(*ptr, res);\t\t\t\t\t\\
+} while (0)
+
+/*
+ * Remove and clamp on negative, from a local variable.
+ * A variant of sub_positive() without explicit load-store barriers.
+ */
+#define lsub_positive(_ptr, _val) do {\t\t\t\t\\
+\ttypeof(_ptr) ptr = (_ptr);\t\t\t\t\\
+\t*ptr -= min_t(typeof(*ptr), *ptr, (_val));\t\t\\
 } while (0)
 
 #ifdef CONFIG_SMP
