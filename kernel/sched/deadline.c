@@ -89,6 +89,49 @@ void __add_running_bw(u64 dl_bw, struct dl_rq *dl_rq)
 	cpufreq_update_util(rq_of_dl_rq(dl_rq), 0);
 }
 
+#ifdef CONFIG_SMP
+static inline
+void __dl_update(struct dl_bw *dl_b, s64 bw)
+{
+	struct root_domain *rd = container_of(dl_b, struct root_domain, dl_bw);
+	int i;
+	RCU_LOCKDEP_WARN(!rcu_read_lock_sched_held(),
+			 "sched RCU must be held");
+	for_each_cpu_and(i, rd->span, cpu_active_mask) {
+		struct rq *rq = cpu_rq(i);
+		rq->dl.extra_bw += bw;
+	}
+}
+#else
+static inline
+void __dl_update(struct dl_bw *dl_b, s64 bw)
+{
+	struct dl_rq *dl = container_of(dl_b, struct dl_rq, dl_bw);
+	dl->extra_bw += bw;
+}
+#endif
+
+static inline
+void __dl_sub(struct dl_bw *dl_b, u64 tsk_bw, int cpus)
+{
+	dl_b->total_bw -= tsk_bw;
+	__dl_update(dl_b, (s32)tsk_bw / cpus);
+}
+
+static inline
+void __dl_add(struct dl_bw *dl_b, u64 tsk_bw, int cpus)
+{
+	dl_b->total_bw += tsk_bw;
+	__dl_update(dl_b, -((s32)tsk_bw / cpus));
+}
+
+static inline bool
+__dl_overflow(struct dl_bw *dl_b, int cpus, u64 old_bw, u64 new_bw)
+{
+	return dl_b->bw != -1 &&
+	       dl_b->bw * cpus < dl_b->total_bw - old_bw + new_bw;
+}
+
 static inline
 void __sub_running_bw(u64 dl_bw, struct dl_rq *dl_rq)
 {
@@ -1666,6 +1709,27 @@ select_task_rq_dl(struct task_struct *p, int cpu, int sd_flag, int flags,
 		if (target != -1 &&
 		    dl_task_is_earliest_deadline(p, cpu_rq(target)))
 			cpu = target;
+	}
+
+	if (sched_asym_cpucap_active() && !dl_task_fits_capacity(p, cpu)) {
+		unsigned long cap, max_cap = 0;
+		int best_cpu = -1;
+
+		/* Select the best-fit CPU for the task's capacity needs */
+		for_each_cpu(cpu, &p->cpus_allowed) {
+			cap = capacity_orig_of(cpu);
+			if (dl_task_fits_capacity(p, cpu)) {
+				best_cpu = cpu;
+				break;
+			}
+			if (cap > max_cap ||
+			    (cpu == task_cpu(p) && cap == max_cap)) {
+				max_cap = cap;
+				best_cpu = cpu;
+			}
+		}
+		if (best_cpu != -1)
+			cpu = best_cpu;
 	}
 	rcu_read_unlock();
 
