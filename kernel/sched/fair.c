@@ -12228,8 +12228,6 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 
 		rcu_read_lock();
 		sd = rcu_dereference_check_sched_domain(this_rq->sd);
-		if (sd)
-			update_next_balance(sd, &next_balance);
 		rcu_read_unlock();
 
 		nohz_newidle_balance(this_rq);
@@ -12270,9 +12268,9 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 				sd->max_newidle_lb_cost = domain_cost;
 
 			curr_cost += domain_cost;
+			sd->last_balance = jiffies;
+			update_next_balance(sd, &next_balance);
 		}
-
-		update_next_balance(sd, &next_balance);
 
 		/*
 		 * Stop searching for tasks to pull if there are now runnable
