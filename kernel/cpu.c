@@ -2440,6 +2440,19 @@ EXPORT_SYMBOL(__cpu_active_mask);
 struct cpumask __cpu_isolated_mask __read_mostly;
 EXPORT_SYMBOL(__cpu_isolated_mask);
 
+/*
+ * cpu_perf_mask: represents the big/performance CPU cluster.
+ * On platforms with proper capacity topology, this is set to the
+ * high-capacity CPUs. Fallback to cpu_possible_mask if not available.
+ */
+#ifndef CONFIG_BIG_CPU_MASK
+const struct cpumask *const cpu_perf_mask = cpu_possible_mask;
+#else
+static const unsigned long perf_cpu_bits = CONFIG_BIG_CPU_MASK;
+const struct cpumask *const cpu_perf_mask = to_cpumask(&perf_cpu_bits);
+#endif
+EXPORT_SYMBOL(cpu_perf_mask);
+
 void init_cpu_present(const struct cpumask *src)
 {
 	cpumask_copy(&__cpu_present_mask, src);
