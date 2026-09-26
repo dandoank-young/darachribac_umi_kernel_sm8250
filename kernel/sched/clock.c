@@ -288,7 +288,7 @@ again:
 	clock = wrap_max(clock, min_clock);
 	clock = wrap_min(clock, max_clock);
 
-	if (cmpxchg64(&scd->clock, old_clock, clock) != old_clock)
+	if (!try_cmpxchg64(&scd->clock, &old_clock, clock))
 		goto again;
 
 	return clock;
@@ -350,7 +350,7 @@ again:
 		val = remote_clock;
 	}
 
-	if (cmpxchg64(ptr, old_val, val) != old_val)
+	if (!try_cmpxchg64(ptr, &old_val, val))
 		goto again;
 
 	return val;
@@ -369,7 +369,7 @@ u64 sched_clock_cpu(int cpu)
 	if (sched_clock_stable())
 		return sched_clock() + __sched_clock_offset;
 
-	if (!static_branch_unlikely(&sched_clock_running))
+	if (!static_branch_likely(&sched_clock_running))
 		return sched_clock();
 
 	preempt_disable_notrace();
@@ -392,7 +392,7 @@ void sched_clock_tick(void)
 	if (sched_clock_stable())
 		return;
 
-	if (!static_branch_unlikely(&sched_clock_running))
+	if (!static_branch_likely(&sched_clock_running))
 		return;
 
 	lockdep_assert_irqs_disabled();
@@ -459,7 +459,7 @@ void __init sched_clock_init(void)
 
 u64 sched_clock_cpu(int cpu)
 {
-	if (!static_branch_unlikely(&sched_clock_running))
+	if (!static_branch_likely(&sched_clock_running))
 		return 0;
 
 	return sched_clock();

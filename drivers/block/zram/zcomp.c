@@ -15,6 +15,7 @@
 #include <linux/sched.h>
 #include <linux/cpu.h>
 #include <linux/crypto.h>
+#include <linux/lz4.h>
 
 #include "zcomp.h"
 
@@ -158,7 +159,27 @@ int zcomp_decompress(struct zcomp_strm *zstrm,
 		const void *src, unsigned int src_len, void *dst)
 {
 	unsigned int dst_len = PAGE_SIZE;
+	int ret;
 
+#if defined(CONFIG_ARM64) && defined(CONFIG_KERNEL_MODE_NEON) \
+	&& defined(CONFIG_CRYPTO_LZ4)
+	if (!strcmp(crypto_tfm_alg_name(crypto_comp_tfm(zstrm->tfm)), "lz4")) {
+		/*
+		 * Use the ARM64 NEON assembly decoder, exactly as
+		 * crypto/lz4.c, f2fs, erofs and incfs already do.
+		 * Bounds safety is unchanged: the assembly stops
+		 * LZ4_FAST_MARGIN (128) bytes short of both buffer ends
+		 * and the remainder is always finished by the fully
+		 * checked __LZ4_decompress_generic().
+		 */
+		ret = LZ4_arm64_decompress_safe(src, dst,
+						src_len, dst_len, false);
+		if (ret >= 0) {
+			dst_len = ret;
+			return 0;
+		}
+	}
+#endif
 	return crypto_comp_decompress(zstrm->tfm,
 			src, src_len,
 			dst, &dst_len);

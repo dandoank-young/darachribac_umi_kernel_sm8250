@@ -5,12 +5,16 @@
  */
 
 #include <uapi/linux/sched/types.h>
+#include <linux/cpumask.h>
 #include <linux/ctype.h>
 #include <linux/debugfs.h>
 #include <linux/dma-buf.h>
 #include <linux/fdtable.h>
+#include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/ion.h>
+#include <linux/irq.h>
+#include <linux/kthread.h>
 #include <linux/mman.h>
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -91,7 +95,13 @@ static const struct vm_operations_struct kgsl_gpumem_vm_ops;
  * recently freed and print out a message to that effect
  */
 
-#define MEMFREE_ENTRIES 512
+/*
+ * kgsl_memfree_purge() scans this whole array under memfree_lock on every
+ * allocation, so its size is paid on the hot path while only the pagefault
+ * diagnostic reader ever benefits from the depth. Keep enough history to be
+ * useful without holding a global spinlock for 512 iterations per allocation.
+ */
+#define MEMFREE_ENTRIES 64
 
 static DEFINE_SPINLOCK(memfree_lock);
 
@@ -5289,6 +5299,29 @@ static int _register_device(struct kgsl_device *device)
 	return 0;
 }
 
+/*
+ * Keep the KGSL SCHED_FIFO kthreads on the big cluster.
+ *
+ * The latency the GPU sees on the submission path is dominated by how quickly
+ * the GPU interrupt is taken and the dispatcher kthread gets to run, and these
+ * are ordinary SCHED_FIFO tasks free to land on a silver core.
+ *
+ * cpu_perf_mask is the big cluster (CONFIG_BIG_CPU_MASK). Falls back to
+ * cpu_possible_mask if not configured, which is a no-op on most systems.
+ */
+static void kgsl_pin_to_perf_cpus(struct task_struct *task, const char *what)
+{
+	int ret;
+
+	if (IS_ERR_OR_NULL(task) || cpumask_empty(cpu_perf_mask))
+		return;
+
+	ret = set_cpus_allowed_ptr(task, cpu_perf_mask);
+	if (ret)
+		pr_warn("kgsl: unable to pin %s to the big cluster: %d\n",
+			what, ret);
+}
+
 int kgsl_request_irq(struct platform_device *pdev, const  char *name,
 		irq_handler_t handler, void *data)
 {
@@ -5360,6 +5393,7 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 	}
 
 	sched_set_fifo(device->events_worker->task);
+	kgsl_pin_to_perf_cpus(device->events_worker->task, "events_worker");
 
 	if (!devm_request_mem_region(device->dev, device->reg_phys,
 				device->reg_len, device->name)) {
@@ -5384,6 +5418,8 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 
 	device->pwrctrl.interrupt_num = status;
 	disable_irq(device->pwrctrl.interrupt_num);
+	if (!cpumask_empty(cpu_perf_mask))
+		irq_set_affinity_hint(device->pwrctrl.interrupt_num, cpu_perf_mask);
 
 	rwlock_init(&device->context_lock);
 	spin_lock_init(&device->submit_lock);
@@ -5614,7 +5650,7 @@ static int __init kgsl_core_init(void)
 	INIT_LIST_HEAD(&kgsl_driver.pagetable_list);
 
 	kgsl_driver.workqueue = alloc_workqueue("kgsl-workqueue",
-		WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_SYSFS, 0);
+		WQ_HIGHPRI | WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_SYSFS, 0);
 
 	if (!kgsl_driver.workqueue) {
 		pr_err("kgsl: Failed to allocate kgsl workqueue\n");
@@ -5623,7 +5659,7 @@ static int __init kgsl_core_init(void)
 	}
 
 	kgsl_driver.mem_workqueue = alloc_workqueue("kgsl-mementry",
-		WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
+		WQ_HIGHPRI | WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
 
 	if (!kgsl_driver.mem_workqueue) {
 		pr_err("kgsl: Failed to allocate mem workqueue\n");
@@ -5644,6 +5680,7 @@ static int __init kgsl_core_init(void)
 	}
 
 	sched_setscheduler(kgsl_driver.worker_thread, SCHED_FIFO, &param);
+	kgsl_pin_to_perf_cpus(kgsl_driver.worker_thread, "worker_thread");
 
 	kgsl_events_init();
 
