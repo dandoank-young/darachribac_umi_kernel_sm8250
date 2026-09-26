@@ -378,7 +378,6 @@ static void rmem_dma_device_release(struct reserved_mem *rmem,
 {
 	if (dev) {
 		dev->dma_mem = NULL;
-		dev->dma_mem = NULL;
 	}
 }
 
