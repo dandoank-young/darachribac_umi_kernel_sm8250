@@ -5418,6 +5418,18 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 
 	device->pwrctrl.interrupt_num = status;
 	disable_irq(device->pwrctrl.interrupt_num);
+	if (!cpumask_empty(cpu_perf_mask)) {
+		int aff = irq_set_affinity(device->pwrctrl.interrupt_num,
+				cpu_perf_mask);
+
+		if (aff)
+			dev_warn(device->dev,
+				"Unable to affine GPU irq to the big cluster: %d\n",
+				aff);
+		else
+			irq_set_status_flags(device->pwrctrl.interrupt_num,
+					IRQ_NO_BALANCING);
+	}
 	if (!cpumask_empty(cpu_perf_mask))
 		irq_set_affinity_hint(device->pwrctrl.interrupt_num, cpu_perf_mask);
 
